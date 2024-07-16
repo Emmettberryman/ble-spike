@@ -1,56 +1,76 @@
-import bluetooth
+from spike import PrimeHub, TouchSensor
+from BLE_CEEO import Yell
 import time
-import struct
 
-NAME_FLAG = 0x09
-IRQ_SCAN_RESULT = 5
-IRQ_SCAN_DONE = 6
+hub = PrimeHub()
+touch_sensor = TouchSensor('A')  # Assuming the touch sensor is connected to port A
 
-class Sniff:
-    def __init__(self):
-        self._ble = bluetooth.BLE()
-        self._ble.active(True)
-        self._ble.irq(self._irq)
-        self.scanning = False
-        self.names = []
+def peripheral(name): 
+    try:
+        p = Yell(name, verbose = True)
+        if p.connect_up():
+            print('P connected')
+            time.sleep(2)
+            while True:
+                touch_value = touch_sensor.is_pressed()
+                payload = f'Touch Sensor: {touch_value}'
+                p.send(payload)
+                if p.is_any:
+                    print(p.read())
+                if not p.is_connected:
+                    print('lost connection')
+                    break
+                time.sleep(1)
+    except Exception as e:
+        print(e)
+    finally:
+        p.disconnect()
+        print('closing up')
+        
+peripheral('Maria')
 
-    def _irq(self, event, data):
-        if event == IRQ_SCAN_RESULT:
-            addr_type, addr, adv_type, rssi, adv_data = data
-            name = self.decode_name(adv_data)
-            if name and name not in self.names:
-                self.names.append(name)
-                print(f"Received: {name}")
-        elif event == IRQ_SCAN_DONE:
-            self.scanning = False
+from BLE_CEEO import Yell, Listen
+import time
 
-    def decode_field(self, payload, adv_type):
-        i = 0
-        result = []
-        while i + 1 < len(payload):
-            if payload[i + 1] == adv_type:
-                result.append(payload[i + 2 : i + payload[i] + 1])
-            i += 1 + payload[i]
-        return result
+def peripheral(name): 
+    try:
+        p = Yell(name, verbose = True)
+        if p.connect_up():
+            print('P connected')
+            time.sleep(2)
+            payload = ''  
+            for i in range(100):
+                payload += str(i)
+                p.send(payload)
+                if p.is_any:
+                    print(p.read())
+                if not p.is_connected:
+                    print('lost connection')
+                    break
+                time.sleep(1)
+    except Exception as e:
+        print(e)
+    finally:
+        p.disconnect()
+        print('closing up')
+        
+                
+def central(name):   
+    try:   
+        L = Listen(name, verbose = True)
+        if L.connect_up():
+            print('L connected')
+            while L.is_connected:
+                time.sleep(4)
+                if L.is_any:
+                    reply = L.read()
+                    print(reply) #seems to stop at 80 characteres
+                    L.send(reply[:20])  #seems to stop around 20 characters
+    except Exception as e:
+        print(e)
+    finally:
+        L.disconnect()
+        print('closing up')
 
-    def decode_name(self, payload):
-        n = self.decode_field(payload, NAME_FLAG)
-        return str(n[0], "utf-8") if n else ""
-
-    def scan(self, duration=1000):
-        self.scanning = True
-        self._ble.gap_scan(duration, 30000, 30000)
-        while self.scanning:
-            time.sleep(0.1)  # Short sleep to allow for event processing
-
-    def stop_scan(self):
-        self._ble.gap_scan(None)
-        self.scanning = False
-
-c = Sniff()
-
-while True:
-    c.scan(1000)  # Scan for 1 second
-    c.stop_scan()
-    c.names.clear()
-    time.sleep(0.1)  # Short delay between scans
+peripheral('Maria')
+#central('Maria')
